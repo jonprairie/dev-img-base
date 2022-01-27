@@ -1,0 +1,238 @@
+#+options: ^:{} toc:2
+
+* Dev Environment Inside Docker Container
+
+** How We Got Here
+
+This experimental image is the result of a few separate problems I had that - eventually - I realized were not entirely separate.
+
+- Build reproducibility wasn't great.
+  My environment was essentially a hodge-podge of... well, random stuff really. Eventually I want to move my builds to a CI tool but that's pie in the sky for the moment.
+- Playing around with new tools was a pain.
+  Sometimes my byzantine environment would interfere with the tool; and if the tool configuration was involved I had to decide if setting everything up was worth the risk of having to tear it back down if I didn't end up caring for it.
+- Certain functions within Emacs were slow, annoying to setup, or sometimes even unavailable on Windows.
+  eg Magit is slow in Windows and instantaneous in Linux. Compiling in C or C++ is much easier in Linux. Development in general is much more sane in Linux.
+
+Standardizing my dev environment configuration and putting it into a linux-based container helps to solve all of these problems.
+
+** How to Use this Project
+
+*** Build Scripts
+
+#+begin_src shell :tangle tangle.sh
+  #!/bin/bash
+  emacs --batch --eval "(require 'org)" --eval '(org-babel-tangle-file "README.org")'
+#+end_src
+
+
+*** Build Container
+
+Based on this file:
+
+#+begin_src shell :tangle build_full.sh
+  #!/bin/bash
+  ./tangle.sh
+  ./build.sh
+#+end_src
+
+Based on Dockerfile
+
+#+begin_src shell :tangle build.sh
+  #!/bin/bash
+  docker build -t devenv .
+#+end_src
+
+*** Run Container
+
+#+begin_src shell :tangle run.sh
+  #!/bin/bash
+  GITNAME=$1
+  GITEMAIL=$2
+  DOTSSH="$3:/mnt/.ssh:ro" \
+        echo \
+        docker container run -d \
+        -p 55111:55111 \
+        -p 60001:60001/udp \
+        -v $DOTSSH \
+        -e "GNAME=$GITNAME" \
+        -e "GEMAIL=$GITEMAIL" \
+        devenv:latest
+#+end_src
+
+*** Connect to the Container
+
+Via mosh:
+
+#+begin_src shell :tangle cn.sh
+  #!/bin/bash
+  mosh --ssh="ssh -p 55111 -l root" --port 60001 localhost
+#+end_src
+
+
+Via ssh:
+
+#+begin_src shell :tangle cn_ssh.sh
+  #!/bin/bash
+  ssh -p 55111 -l root localhost
+#+end_src
+
+** A Word to the Wise
+
+This repo should in no way be confused for best practice. I have no idea what I'm doing.
+
+** The Setup
+
+We start by summoning Ubuntu from the void.
+
+#+begin_src docker-build :tangle Dockerfile
+FROM ubuntu:22.04
+#+end_src
+
+This line forces tzdata to use UTC instead of interactively asking for our locale data during the build: https://stackoverflow.com/questions/44331836/apt-get-install-tzdata-noninteractive
+
+#+begin_src docker-build :tangle Dockerfile
+ENV DEBIAN_FRONTEND=noninteractive
+#+end_src
+
+Now to install our base packages. A few notes:
+- mosh is a nice utility for running an editor on a remote machine: https://linuxhandbook.com/mosh/
+- Though I will be using emacs, it's sometimes nice to have a lightweight editor like vi (vim-tiny) for when I bork my emacs config.
+- I'm going with clang for now, mostly because it's nice to have the llvm backend around as well.
+- We need ca-certificates in order to accept TLS handshakes (eg when pushing to github).
+- We'll need locales later to setup the environment for mosh.
+- dos2unix is necessary until I get this container bootstrapped. Until then I'm writing this on Windows.
+
+#+begin_src docker-build :tangle Dockerfile :noweb yes
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+      openssh-server \
+      mosh \
+      bash \
+      git \
+      vim-tiny \
+      sbcl \
+      clang \
+      python3 \
+      ca-certificates \
+      locales \
+      dos2unix \
+      emacs
+#+end_src
+
+Copy our [[*sshd_config][sshd configuration]] to where sshd can find it, then save github as a recognized host.
+
+#+begin_src docker-build :tangle Dockerfile
+COPY build/sshd_config /etc/ssh/sshd_config
+
+RUN mkdir -p /root/.ssh && \
+    chmod 0700 /root/.ssh && \
+    ssh-keyscan github.com > /root/.ssh/known_hosts
+#+end_src
+
+I kept running into a weird bug when trying to run my container on WSL2:
+
+#+begin_quote
+"Missing privilege separation directory: /run/sshd" 
+#+end_quote
+
+Starting and stopping the ssh service seems to fix it :shrug:.
+
+#+begin_src docker-build :tangle Dockerfile
+RUN service ssh start
+RUN service ssh stop
+#+end_src
+
+mosh requires the locale to be set to UTF-8 and for some reason I couldn't manually set LANG/LANGUAGE/LC_ALL by passing them in as -e parameters in the src_shell{docker container run...} command. Thus these next few lines effectively - if not prettily - accomplish this.
+see: https://unix.stackexchange.com/questions/280796/mosh-server-needs-a-utf-8-native-locale-to-run
+and: https://stackoverflow.com/questions/28405902/how-to-set-the-locale-inside-a-debian-ubuntu-docker-container
+and: http://jaredmarkell.com/docker-and-locales/
+
+#+begin_src docker-build :tangle Dockerfile
+RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && \
+    locale-gen
+#RUN echo "LC_ALL=en_US.UTF-8" >> /etc/environment && \
+#    echo "LANG=en_US.UTF-8" >> /etc/environment
+ENV LANG en_US.UTF-8  
+ENV LANGUAGE en_US:en  
+ENV LC_ALL en_US.UTF-8     
+#+end_src
+
+Now we can expose the ports for sshd and mosh, respectively.
+
+#+begin_src docker-build :tangle Dockerfile
+EXPOSE 55111 60001/udp
+#+end_src
+
+
+Our [[*start.sh][entrypoint]] script was written in Windows so we ensure the line endings aren't a problem before executing it.
+
+#+begin_src docker-build :tangle Dockerfile
+COPY build/start.sh /root/temp_start.sh
+RUN dos2unix -n /root/temp_start.sh /usr/local/bin/start.sh
+
+ENTRYPOINT ["bash", "/usr/local/bin/start.sh"]
+#+end_src
+
+
+
+** Reference Files
+
+*** sshd_config
+
+I'm lazy and I don't want to configure sshd by hand. Someone once said Laziness was a virtue, then again, he did [[https://www.oreilly.com/openbook/opensources/book/larry.html][invent Perl]]... In a completely unrelated coincidence we don't forbid logging in as root, for which I can only refer you back to [[*A Word to the Wise]].
+
+#+begin_src txt :tangle build/sshd_config
+Port 55111
+
+Protocol 2
+AllowTcpForwarding yes
+ChallengeResponseAuthentication no
+
+Compression yes
+GatewayPorts yes
+LogLevel VERBOSE
+LoginGraceTime 50s
+MaxAuthTries 6
+MaxStartups 10
+PasswordAuthentication no
+PermitUserEnvironment yes
+PidFile /var/run/sshd.pid
+PrintLastLog yes
+PrintMotd no
+PubkeyAuthentication yes
+StrictModes yes
+
+TCPKeepAlive no
+UseDNS yes
+
+PermitTunnel yes
+#+end_src
+
+*** start.sh
+
+Lets configure git so it doesn't yell at us later
+
+#+begin_src shell :tangle build/start.sh
+  #!/bin/bash
+
+  git config --global user.email $GEMAIL
+  git config --global user.name $GNAME
+#+end_src
+
+So this probably isn't great but I believe it allows us to copy the host's keys WITHOUT saving them in the image itself (which would be BAD^{TM}). Anyways, I once again refer you to [[*A Word to the Wise]].
+
+#+begin_src shell :tangle build/start.sh
+  cp /mnt/.ssh/id_rsa /root/.ssh/id_rsa
+  cp /mnt/.ssh/id_rsa.pub /root/.ssh/id_rsa.pub
+  cp /mnt/.ssh/id_rsa.pub /root/.ssh/authorized_keys
+#+end_src
+
+Finally! Lets kick everything off!
+
+Note: we pass -D to sshd to ensure it runs in the foreground and blocks the container from exiting.
+
+#+begin_src shell :tangle build/start.sh
+  emacs --daemon
+  mosh-server 
+  /usr/sbin/sshd -De
+#+end_src

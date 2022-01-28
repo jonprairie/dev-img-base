@@ -19,10 +19,6 @@ RUN apt-get update && \
 
 COPY build/sshd_config /etc/ssh/sshd_config
 
-RUN mkdir -p /root/.ssh && \
-    chmod 0700 /root/.ssh && \
-    ssh-keyscan github.com > /root/.ssh/known_hosts
-
 RUN service ssh start
 RUN service ssh stop
 
@@ -36,7 +32,7 @@ ENV LC_ALL en_US.UTF-8
 
 EXPOSE 55111 60001/udp
 
-COPY build/start.sh /root/temp_start.sh
-RUN dos2unix -n /root/temp_start.sh /usr/local/bin/start.sh
+COPY build/start.sh /usr/local/bin/start.sh
+RUN dos2unix /usr/local/bin/start.sh
 
 ENTRYPOINT ["bash", "/usr/local/bin/start.sh"]

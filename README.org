@@ -42,19 +42,33 @@ Based on Dockerfile
 
 *** Run Container
 
+This script requires five arguments:
+1. GITNAME - the name with which to sign git commits
+2. GITEMAIL - the email with which to do the same
+3. DOTSSH - the path to the .ssh folder containing the id_rsa/id_rsa.pub pair to use for authentication
+4. SRCHOME - the directory in which project directories will be stored
+5. VIRTHOME - the directory that will act as HOME for the container user
+
+I haven't looked into it too deeply, but I believe the way Docker works requires that DOTSSH, SRCHOME, and VIRTHOME are distinct and don't any one contain another.
+
+Note: if on WSL2, all shared directories must be native Linux directories. Directories under /mnt/c will NOT work! Handling ownership and permissions gets all weird (and it's already weird enough when the host OS is Linux).
+
 #+begin_src shell :tangle run.sh
   #!/bin/bash
   GITNAME="GNAME=$1"
   GITEMAIL="GEMAIL=$2"
-  DOTSSH="$3:/mnt/.ssh:ro" \
-        echo \
-        docker container run -d \
-        -p 55111:55111 \
-        -p 60001:60001/udp \
-        -v $DOTSSH \
-        -e $GITNAME \
-        -e $GITEMAIL \
-        devenv:latest
+  DOTSSH="$3:/mnt/.ssh:ro" 
+  SRCHOME="$4:/src"
+  VIRTHOME="$5:/root"
+  docker container run -d \
+         -p 55111:55111 \
+         -p 60001:60001/udp \
+         -v $DOTSSH \
+         -v $SRCHOME \
+         -v $VIRTHOME \
+         -e $GITNAME \
+         -e $GITEMAIL \
+         devenv:latest
 #+end_src
 
 *** Connect to the Container
@@ -117,14 +131,10 @@ RUN apt-get update && \
       emacs
 #+end_src
 
-Copy our [[#sshd_config][sshd configuration]] to where sshd can find it, then save github as a recognized host.
+Copy our [[#sshd_config][sshd configuration]] to where sshd can find it.
 
 #+begin_src docker-build :tangle Dockerfile
 COPY build/sshd_config /etc/ssh/sshd_config
-
-RUN mkdir -p /root/.ssh && \
-    chmod 0700 /root/.ssh && \
-    ssh-keyscan github.com > /root/.ssh/known_hosts
 #+end_src
 
 I kept running into a weird bug when trying to run my container on WSL2:
@@ -164,8 +174,8 @@ EXPOSE 55111 60001/udp
 Our [[#startsh][entrypoint]] script was written in Windows so we ensure the line endings aren't a problem before executing it.
 
 #+begin_src docker-build :tangle Dockerfile
-COPY build/start.sh /root/temp_start.sh
-RUN dos2unix -n /root/temp_start.sh /usr/local/bin/start.sh
+COPY build/start.sh /usr/local/bin/start.sh
+RUN dos2unix /usr/local/bin/start.sh
 
 ENTRYPOINT ["bash", "/usr/local/bin/start.sh"]
 #+end_src
@@ -214,12 +224,22 @@ Lets configure git so it doesn't yell at us later
   git config --global user.name $GNAME
 #+end_src
 
-So this probably isn't great but I believe it allows us to copy the host's keys WITHOUT saving them in the image itself (which would be BAD^{TM}). Anyways, I am once again forced to refer you back to [[#a-word-to-the-wise][A Word to the Wise]].
+So this probably isn't great but I believe it allows us to copy the host's keys WITHOUT saving them in the image itself (which would be BAD^{TM}). Instead we will save the keys under $VIRTHOME/.ssh with root owner/group/permissions. Anyways, I am once again forced to refer you back to [[#a-word-to-the-wise][A Word to the Wise]].
 
 #+begin_src shell :tangle build/start.sh
-  cp /mnt/.ssh/id_rsa /root/.ssh/id_rsa
-  cp /mnt/.ssh/id_rsa.pub /root/.ssh/id_rsa.pub
-  cp /mnt/.ssh/id_rsa.pub /root/.ssh/authorized_keys
+  if [[ -d /root/.ssh ]]; then
+     echo ".ssh already exists. skipping key copy."
+  else
+     echo ".ssh does not exist. copying keys."
+     mkdir -p /root/.ssh && chmod 0700 /root/.ssh
+     cp /mnt/.ssh/id_rsa /root/.ssh/id_rsa
+     cp /mnt/.ssh/id_rsa.pub /root/.ssh/id_rsa.pub
+     cp /mnt/.ssh/id_rsa.pub /root/.ssh/authorized_keys
+     chmod 0600 /root/.ssh/id_rsa
+     chmod 0600 /root/.ssh/id_rsa.pub
+     chmod 0600 /root/.ssh/authorized_keys
+     ssh-keyscan github.com > /root/.ssh/known_hosts
+  fi
 #+end_src
 
 Finally! Lets kick everything off!

@@ -2,7 +2,7 @@
 
 ** How We Got Here
 
-This experimental image is the result of a few separate problems I had that --- eventually --- I realized were not entirely separate.
+This experimental image is the result of a few separate problems I had that---eventually---I realized were not entirely separate.
 
 - Build reproducibility wasn't great.
   My environment was essentially a hodge-podge of... well, random stuff really. Eventually I want to move my builds to a CI tool but that's pie in the sky for the moment.
@@ -161,7 +161,7 @@ Now we can expose the ports for sshd and mosh, respectively.
 EXPOSE 55111 60001/udp
 #+end_src
 
-Our [[#start.sh][entrypoint]] script was written in Windows so we ensure the line endings aren't a problem before executing it.
+Our [[#startsh][entrypoint]] script was written in Windows so we ensure the line endings aren't a problem before executing it.
 
 #+begin_src docker-build :tangle Dockerfile
 COPY build/start.sh /root/temp_start.sh
@@ -174,7 +174,7 @@ ENTRYPOINT ["bash", "/usr/local/bin/start.sh"]
 
 *** sshd_config
 
-I'm lazy and I don't want to configure sshd by hand. Someone once said Laziness was a virtue; then again, he did [[https://www.oreilly.com/openbook/opensources/book/larry.html][invent Perl]]... In a completely unrelated coincidence: we don't forbid logging in as root, for which I can only refer you back to [[#A Word to the Wise][A Word to the Wise]].
+I'm lazy and I don't want to configure sshd by hand. Someone once said Laziness was a virtue; then again, he did [[https://www.oreilly.com/openbook/opensources/book/larry.html][invent Perl]]... In a completely unrelated coincidence: we don't forbid logging in as root, for which I can only refer you back to [[#a-word-to-the-wise][A Word to the Wise]].
 
 #+begin_src txt :tangle build/sshd_config
 Port 55111
@@ -214,7 +214,7 @@ Lets configure git so it doesn't yell at us later
   git config --global user.name $GNAME
 #+end_src
 
-So this probably isn't great but I believe it allows us to copy the host's keys WITHOUT saving them in the image itself (which would be BAD^{TM}). Anyways, I am once again forced to refer you back to [[#A Word to the Wise][A Word to the Wise]].
+So this probably isn't great but I believe it allows us to copy the host's keys WITHOUT saving them in the image itself (which would be BAD^{TM}). Anyways, I am once again forced to refer you back to [[#a-word-to-the-wise][A Word to the Wise]].
 
 #+begin_src shell :tangle build/start.sh
   cp /mnt/.ssh/id_rsa /root/.ssh/id_rsa

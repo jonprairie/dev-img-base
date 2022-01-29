@@ -114,12 +114,13 @@ Now to install our base packages. A few notes:
 - We'll need locales later to setup the environment for mosh.
 - dos2unix is necessary until I get this container bootstrapped. Until then I'm writing this on Windows.
 
-#+begin_src docker-build :tangle Dockerfile :noweb yes
+#+begin_src docker-build :tangle Dockerfile
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
       openssh-server \
       mosh \
       bash \
+      sudo \
       git \
       vim-tiny \
       sbcl \
@@ -158,8 +159,6 @@ and: http://jaredmarkell.com/docker-and-locales/
 #+begin_src docker-build :tangle Dockerfile
 RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && \
     locale-gen
-#RUN echo "LC_ALL=en_US.UTF-8" >> /etc/environment && \
-#    echo "LANG=en_US.UTF-8" >> /etc/environment
 ENV LANG en_US.UTF-8  
 ENV LANGUAGE en_US:en  
 ENV LC_ALL en_US.UTF-8     

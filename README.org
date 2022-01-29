@@ -42,24 +42,38 @@ Based on Dockerfile
 
 *** Run Container
 
-This script requires five arguments:
+**** Script
+This script uses nine variables:
 1. GITNAME - the name with which to sign git commits
 2. GITEMAIL - the email with which to do the same
 3. DOTSSH - the path to the .ssh folder containing the id_rsa/id_rsa.pub pair to use for authentication
 4. SRCHOME - the directory in which project directories will be stored
 5. VIRTHOME - the directory that will act as HOME for the container user
+6. USERNAME - the name of the user to create inside the container. this script uses the host user along with their uid and gid, so any new files owned by the container user will be owned by the host user as well.
+7. USERID - the id of the host user
+8. GROUPNAME - the group name of the host user
+9. USERGID - the group id of the host user
 
 I haven't looked into it too deeply, but I believe the way Docker works requires that DOTSSH, SRCHOME, and VIRTHOME are distinct and don't any one contain another.
 
-Note: if on WSL2, all shared directories must be native Linux directories. Directories under /mnt/c will NOT work! Handling ownership and permissions gets all weird (and it's already weird enough when the host OS is Linux).
+Note: if on WSL2, it's easiest if all shared directories are native Linux directories. Directories under /mnt/c will NOT work in certain circumstances (eg mapping to a .ssh directory in teh container)! Handling ownership and permissions gets all weird (and it's already weird enough when the host OS is Linux).
+Note: run.sh requires the USER environment variable to be set and pointing to a valid user
+Note: run.sh requires git to be installed and configured
 
 #+begin_src shell :tangle run.sh
   #!/bin/bash
-  GITNAME="GNAME=$1"
-  GITEMAIL="GEMAIL=$2"
-  DOTSSH="$3:/mnt/.ssh:ro" 
-  SRCHOME="$4:/src"
-  VIRTHOME="$5:/root"
+  DOTSSH="/home/$USER/.ssh:/mnt/.ssh:ro" 
+  SRCHOME="/home/$USER/.dv/src:/src"
+  VIRTHOME="/home/$USER/.dv/virt:/home/$USER"
+
+  USERNAME="UNAME=$USER"
+  USERID="UID=$(id -u $USER)"
+  GROUPNAME="GNAME=$(id -gn $USER)"
+  USERGID="GID=$(id -g $USER)"
+
+  GITNAME="GNAME=$(git config user.name)"
+  GITEMAIL="GEMAIL=$(git config user.email)"
+
   docker container run -d \
          -p 55111:55111 \
          -p 60001:60001/udp \
@@ -68,6 +82,26 @@ Note: if on WSL2, all shared directories must be native Linux directories. Direc
          -v $VIRTHOME \
          -e $GITNAME \
          -e $GITEMAIL \
+         -e $USERNAME \
+         -e $USERID \
+         -e $GROUPNAME \
+         -e $USERGID \
+         devenv:latest
+#+end_src
+
+**** CLI
+
+Note: the user will default to dev.
+
+#+begin_src shell 
+  docker container run -d \
+         -p 55111:55111 \
+         -p 60001:60001/udp \
+         -v <path/to/.ssh>:/mnt/.ssh:ro \
+         -v <path/to/srchome>:/src \
+         -v <path/to/virthome>:/home/dev \
+         -e "GNAME=<git-name>" \
+         -e "GEMAIL=<git-email>" \
          devenv:latest
 #+end_src
 
@@ -77,7 +111,7 @@ Via mosh:
 
 #+begin_src shell :tangle cn.sh
   #!/bin/bash
-  mosh --ssh="ssh -p 55111 -l root" --port 60001 localhost
+  mosh --ssh="ssh -p 55111 -l $USER" --port 60001 localhost
 #+end_src
 
 
@@ -85,7 +119,7 @@ Via ssh:
 
 #+begin_src shell :tangle cn_ssh.sh
   #!/bin/bash
-  ssh -p 55111 -l root localhost
+  ssh -p 55111 -l $USER localhost
 #+end_src
 
 ** A Word to the Wise
@@ -104,6 +138,16 @@ This line forces tzdata to use UTC instead of interactively asking for our local
 
 #+begin_src docker-build :tangle Dockerfile
 ENV DEBIAN_FRONTEND=noninteractive
+#+end_src
+
+Here we setup some environment defaults that will be used later to create our user. These can be overwritten in the ~docker container run...~ command to match the user on the host.
+
+#+begin_src docker-build :tangle Dockerfile
+ENV UID="1000" 
+ENV UNAME="dev" 
+ENV GID="1000" 
+ENV GNAME="dev" 
+ENV SHELL="/bin/bash" 
 #+end_src
 
 Now to install our base packages. A few notes:
@@ -183,7 +227,7 @@ ENTRYPOINT ["bash", "/usr/local/bin/start.sh"]
 
 *** sshd_config
 
-I'm lazy and I don't want to configure sshd by hand. Someone once said Laziness was a virtue; then again, he did [[https://www.oreilly.com/openbook/opensources/book/larry.html][invent Perl]]... In a completely unrelated coincidence: we don't forbid logging in as root, for which I can only refer you back to [[#a-word-to-the-wise][A Word to the Wise]].
+I'm lazy and I don't want to configure sshd by hand. Someone once said Laziness was a virtue; then again, he did [[https://www.oreilly.com/openbook/opensources/book/larry.html][invent Perl]]... 
 
 #+begin_src txt :tangle build/sshd_config
 Port 55111
@@ -199,6 +243,7 @@ LoginGraceTime 50s
 MaxAuthTries 6
 MaxStartups 10
 PasswordAuthentication no
+PermitRootLogin no
 PermitUserEnvironment yes
 PidFile /var/run/sshd.pid
 PrintLastLog yes
@@ -214,31 +259,49 @@ PermitTunnel yes
 
 *** start.sh
 
-Lets configure git so it doesn't yell at us later
+Disable the root user and setup our own User. From: https://github.com/JAremko/alpine-vim/blob/master/Dockerfile#L22
+We do this here instead of in the Dockerfile so that the "builder" and "runner" of the container don't have to be the same user.
+
+#+begin_src shell :tangle build/start.sh
+  echo "${UNAME}:x:${UID}:${GID}:${UNAME},,,:/home/${UNAME}:${SHELL}" >> /etc/passwd \
+      && echo "${UNAME}::17032:0:99999:7:::">> /etc/shadow \
+      && echo "${UNAME} ALL=(ALL) NOPASSWD: ALL"> "/etc/sudoers.d/${UNAME}" \
+      && chmod 0440 "/etc/sudoers.d/${UNAME}" \
+      && echo "${GNAME}:x:${GID}:${UNAME}" >> /etc/group
+#+end_src
+
+So this probably isn't great but I believe it allows us to copy the host's keys WITHOUT saving them in the image itself (which would be BAD^{TM}). Instead we will save the keys under $VIRTHOME/.ssh with root owner/group/permissions. Anyways, I am once again forced to refer you back to [[#a-word-to-the-wise][A Word to the Wise]].
+
+#+begin_src shell :tangle build/start.sh
+  UHOME="/home/$UNAME"
+  if [[ -d "$UHOME/.ssh" ]]; then
+      echo ".ssh already exists. skipping key copy."
+  else
+      echo ".ssh does not exist. copying keys."
+      mkdir -p "$UHOME/.ssh" && chmod 0700 "$UHOME/.ssh"
+
+      cp /mnt/.ssh/id_rsa "$UHOME/.ssh/id_rsa"
+      chmod 0600 "$UHOME/.ssh/id_rsa"
+
+      cp /mnt/.ssh/id_rsa.pub "$UHOME/.ssh/id_rsa.pub"
+      chmod 0600 "$UHOME/.ssh/id_rsa.pub"
+
+      cp /mnt/.ssh/id_rsa.pub "$UHOME/.ssh/authorized_keys"
+      chmod 0600 "$UHOME/.ssh/authorized_keys"
+
+      chown -hR "$UNAME:$GNAME" "$UHOME"
+
+      ssh-keyscan github.com > "$UHOME/.ssh/known_hosts"
+  fi
+#+end_src
+
+Lets configure git real quick so it doesn't yell at us later
 
 #+begin_src shell :tangle build/start.sh
   #!/bin/bash
 
   git config --global user.email $GEMAIL
   git config --global user.name $GNAME
-#+end_src
-
-So this probably isn't great but I believe it allows us to copy the host's keys WITHOUT saving them in the image itself (which would be BAD^{TM}). Instead we will save the keys under $VIRTHOME/.ssh with root owner/group/permissions. Anyways, I am once again forced to refer you back to [[#a-word-to-the-wise][A Word to the Wise]].
-
-#+begin_src shell :tangle build/start.sh
-  if [[ -d /root/.ssh ]]; then
-     echo ".ssh already exists. skipping key copy."
-  else
-     echo ".ssh does not exist. copying keys."
-     mkdir -p /root/.ssh && chmod 0700 /root/.ssh
-     cp /mnt/.ssh/id_rsa /root/.ssh/id_rsa
-     cp /mnt/.ssh/id_rsa.pub /root/.ssh/id_rsa.pub
-     cp /mnt/.ssh/id_rsa.pub /root/.ssh/authorized_keys
-     chmod 0600 /root/.ssh/id_rsa
-     chmod 0600 /root/.ssh/id_rsa.pub
-     chmod 0600 /root/.ssh/authorized_keys
-     ssh-keyscan github.com > /root/.ssh/known_hosts
-  fi
 #+end_src
 
 Finally! Lets kick everything off!

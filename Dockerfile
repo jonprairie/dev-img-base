@@ -2,11 +2,18 @@ FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+ENV UID="1000" 
+ENV UNAME="dev" 
+ENV GID="1000" 
+ENV GNAME="dev" 
+ENV SHELL="/bin/bash"
+
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
       openssh-server \
       mosh \
       bash \
+      sudo \
       git \
       vim-tiny \
       sbcl \
@@ -24,8 +31,6 @@ RUN service ssh stop
 
 RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && \
     locale-gen
-#RUN echo "LC_ALL=en_US.UTF-8" >> /etc/environment && \
-#    echo "LANG=en_US.UTF-8" >> /etc/environment
 ENV LANG en_US.UTF-8  
 ENV LANGUAGE en_US:en  
 ENV LC_ALL en_US.UTF-8

@@ -152,8 +152,7 @@ ENV SHELL="/bin/bash"
 
 Now to install our base packages. A few notes:
 - mosh is a nice utility for running an editor on a remote machine: https://linuxhandbook.com/mosh/
-- Though I will be using emacs, it's sometimes nice to have a lightweight editor like vi (vim-tiny) for when I bork my emacs config.
-- I'm going with clang for now, mostly because it's nice to have the llvm backend around as well.
+- Though I will eventually be building an emacs environment on top of this image, it's nice to have vi/vim-tiny around for random small edits that sprout up.
 - We need ca-certificates in order to accept TLS handshakes (eg when pushing to github).
 - We'll need locales later to setup the environment for mosh.
 - dos2unix is necessary until I get this container bootstrapped. Until then I'm writing this on Windows.
@@ -167,13 +166,9 @@ RUN apt-get update && \
       sudo \
       git \
       vim-tiny \
-      sbcl \
-      clang \
-      python3 \
       ca-certificates \
       locales \
-      dos2unix \
-      emacs
+      dos2unix 
 #+end_src
 
 Copy our [[#sshd_config][sshd configuration]] to where sshd can find it.
@@ -309,7 +304,6 @@ Finally! Lets kick everything off!
 Note: we pass -D to sshd to ensure it runs in the foreground and blocks the container from exiting.
 
 #+begin_src shell :tangle build/start.sh
-  emacs --daemon
   mosh-server 
   /usr/sbin/sshd -De
 #+end_src

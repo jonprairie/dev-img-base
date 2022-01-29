@@ -16,13 +16,9 @@ RUN apt-get update && \
       sudo \
       git \
       vim-tiny \
-      sbcl \
-      clang \
-      python3 \
       ca-certificates \
       locales \
-      dos2unix \
-      emacs
+      dos2unix
 
 COPY build/sshd_config /etc/ssh/sshd_config
 

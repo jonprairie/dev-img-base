@@ -30,6 +30,5 @@ fi
 git config --global user.email $GEMAIL
 git config --global user.name $GNAME
 
-emacs --daemon
 mosh-server 
 /usr/sbin/sshd -De

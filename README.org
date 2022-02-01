@@ -36,7 +36,7 @@ Based on Dockerfile
 
 #+begin_src shell :tangle build.sh
   #!/bin/bash
-  docker build -t devenv .
+  docker build -t dev-img-base .
 #+end_src
 
 *** Run Container
@@ -85,7 +85,7 @@ Note: run.sh requires git to be installed and configured
          -e $USERID \
          -e $GROUPNAME \
          -e $USERGID \
-         devenv:latest
+         dev-img-base:latest
 #+end_src
 
 **** CLI
@@ -101,7 +101,7 @@ Note: the user will default to dev.
          -v <path/to/virthome>:/home/dev \
          -e "GITNAME=<git-name>" \
          -e "GITEMAIL=<git-email>" \
-         devenv:latest
+         dev-img-base:latest
 #+end_src
 
 *** Connect to the Container

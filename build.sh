@@ -1,2 +1,2 @@
 #!/bin/bash
-docker build -t devenv .
+docker build -t dev-img-base .

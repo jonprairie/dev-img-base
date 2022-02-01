@@ -23,4 +23,4 @@ docker container run -d \
        -e $USERID \
        -e $GROUPNAME \
        -e $USERGID \
-       devenv:latest
+       dev-img-base:latest

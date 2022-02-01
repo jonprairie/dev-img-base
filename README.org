@@ -253,6 +253,8 @@ PermitTunnel yes
 
 *** start.sh
 
+I'm thinking this script might make sense as a standalone repo, where it could be cloned in from github in the Dockerfile. I could remove the -D flag for sshd at the end and then this script could be called as part of the image's ENTRYPOINT script, which could setup any image-specific stuff and then call bash or something.
+
 Disable the root user and setup our own User. From: https://github.com/JAremko/alpine-vim/blob/master/Dockerfile#L22
 We do this here instead of in the Dockerfile so that the "builder" and "runner" of the container don't have to be the same user.
 
@@ -264,7 +266,7 @@ We do this here instead of in the Dockerfile so that the "builder" and "runner" 
       && echo "${GRPNAME}:x:${GRPID}:${UNAME}" >> /etc/group
 #+end_src
 
-So this probably isn't great but I believe it allows us to copy the host's keys WITHOUT saving them in the image itself (which would be BAD^{TM}). Instead we will save the keys under $VIRTHOME/.ssh with root owner/group/permissions. Anyways, I am once again forced to refer you back to [[#a-word-to-the-wise][A Word to the Wise]].
+So this probably isn't great but I believe it allows us to copy the host's keys WITHOUT saving them in the image itself (which would be BAD^{TM}). Instead we will save the keys under $VIRTHOME/.ssh with read/write privileges reserved for the current user. Anyways, I am once again forced to refer you back to [[#a-word-to-the-wise][A Word to the Wise]].
 
 #+begin_src shell :tangle build/start.sh
   UHOME="/home/$UNAME"
@@ -283,9 +285,15 @@ So this probably isn't great but I believe it allows us to copy the host's keys 
       cp /mnt/.ssh/id_rsa.pub "$UHOME/.ssh/authorized_keys"
       chmod 0600 "$UHOME/.ssh/authorized_keys"
 
+      if [[ -e "/mnt/.ssh/authorized_keys" ]]; then
+          cat /mnt/.ssh/authorized_keys >> $UHOME/.ssh/authorized_keys
+      fi
+
       chown -hR "$UNAME:$GRPNAME" "$UHOME"
 
-      ssh-keyscan github.com > "$UHOME/.ssh/known_hosts"
+      ssh-keyscan github.com >> "$UHOME/.ssh/known_hosts"
+      ssh-keyscan gitlab.com >> "$UHOME/.ssh/known_hosts"
+      ssh-keyscan bitbucket.com >> "$UHOME/.ssh/known_hosts"
   fi
 #+end_src
 

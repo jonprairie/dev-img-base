@@ -20,9 +20,15 @@ else
     cp /mnt/.ssh/id_rsa.pub "$UHOME/.ssh/authorized_keys"
     chmod 0600 "$UHOME/.ssh/authorized_keys"
 
+    if [[ -e "/mnt/.ssh/authorized_keys" ]]; then
+        cat /mnt/.ssh/authorized_keys >> $UHOME/.ssh/authorized_keys
+    fi
+
     chown -hR "$UNAME:$GRPNAME" "$UHOME"
 
-    ssh-keyscan github.com > "$UHOME/.ssh/known_hosts"
+    ssh-keyscan github.com >> "$UHOME/.ssh/known_hosts"
+    ssh-keyscan gitlab.com >> "$UHOME/.ssh/known_hosts"
+    ssh-keyscan bitbucket.com >> "$UHOME/.ssh/known_hosts"
 fi
 
 #!/bin/bash

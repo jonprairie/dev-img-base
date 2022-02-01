@@ -4,8 +4,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 ENV UID="1000" 
 ENV UNAME="dev" 
-ENV GID="1000" 
-ENV GNAME="dev" 
+ENV GRPID="1000" 
+ENV GRPNAME="dev" 
 ENV SHELL="/bin/bash"
 
 RUN apt-get update && \

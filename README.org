@@ -22,7 +22,6 @@ Standardizing my dev environment configuration and putting it into a linux-based
   emacs --batch --eval "(require 'org)" --eval '(org-babel-tangle-file "README.org")'
 #+end_src
 
-
 *** Build Container
 
 Based on this file:
@@ -68,11 +67,11 @@ Note: run.sh requires git to be installed and configured
 
   USERNAME="UNAME=$USER"
   USERID="UID=$(id -u $USER)"
-  GROUPNAME="GNAME=$(id -gn $USER)"
-  USERGID="GID=$(id -g $USER)"
+  GROUPNAME="GRPNAME=$(id -gn $USER)"
+  USERGID="GRPID=$(id -g $USER)"
 
-  GITNAME="GNAME=$(git config user.name)"
-  GITEMAIL="GEMAIL=$(git config user.email)"
+  GITNAME="GITNAME=$(git config user.name)"
+  GITEMAIL="GITEMAIL=$(git config user.email)"
 
   docker container run -d \
          -p 55111:55111 \
@@ -100,8 +99,8 @@ Note: the user will default to dev.
          -v <path/to/.ssh>:/mnt/.ssh:ro \
          -v <path/to/srchome>:/src \
          -v <path/to/virthome>:/home/dev \
-         -e "GNAME=<git-name>" \
-         -e "GEMAIL=<git-email>" \
+         -e "GITNAME=<git-name>" \
+         -e "GITEMAIL=<git-email>" \
          devenv:latest
 #+end_src
 
@@ -145,8 +144,8 @@ Here we setup some environment defaults that will be used later to create our us
 #+begin_src docker-build :tangle Dockerfile
 ENV UID="1000" 
 ENV UNAME="dev" 
-ENV GID="1000" 
-ENV GNAME="dev" 
+ENV GRPID="1000" 
+ENV GRPNAME="dev" 
 ENV SHELL="/bin/bash" 
 #+end_src
 
@@ -258,11 +257,11 @@ Disable the root user and setup our own User. From: https://github.com/JAremko/a
 We do this here instead of in the Dockerfile so that the "builder" and "runner" of the container don't have to be the same user.
 
 #+begin_src shell :tangle build/start.sh
-  echo "${UNAME}:x:${UID}:${GID}:${UNAME},,,:/home/${UNAME}:${SHELL}" >> /etc/passwd \
+  echo "${UNAME}:x:${UID}:${GRPID}:${UNAME},,,:/home/${UNAME}:${SHELL}" >> /etc/passwd \
       && echo "${UNAME}::17032:0:99999:7:::">> /etc/shadow \
       && echo "${UNAME} ALL=(ALL) NOPASSWD: ALL"> "/etc/sudoers.d/${UNAME}" \
       && chmod 0440 "/etc/sudoers.d/${UNAME}" \
-      && echo "${GNAME}:x:${GID}:${UNAME}" >> /etc/group
+      && echo "${GRPNAME}:x:${GRPID}:${UNAME}" >> /etc/group
 #+end_src
 
 So this probably isn't great but I believe it allows us to copy the host's keys WITHOUT saving them in the image itself (which would be BAD^{TM}). Instead we will save the keys under $VIRTHOME/.ssh with root owner/group/permissions. Anyways, I am once again forced to refer you back to [[#a-word-to-the-wise][A Word to the Wise]].
@@ -284,7 +283,7 @@ So this probably isn't great but I believe it allows us to copy the host's keys 
       cp /mnt/.ssh/id_rsa.pub "$UHOME/.ssh/authorized_keys"
       chmod 0600 "$UHOME/.ssh/authorized_keys"
 
-      chown -hR "$UNAME:$GNAME" "$UHOME"
+      chown -hR "$UNAME:$GRPNAME" "$UHOME"
 
       ssh-keyscan github.com > "$UHOME/.ssh/known_hosts"
   fi
@@ -295,8 +294,8 @@ Lets configure git real quick so it doesn't yell at us later
 #+begin_src shell :tangle build/start.sh
   #!/bin/bash
 
-  git config --global user.email $GEMAIL
-  git config --global user.name $GNAME
+  git config --global user.email $GITEMAIL
+  git config --global user.name $GITNAME
 #+end_src
 
 Finally! Lets kick everything off!

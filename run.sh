@@ -5,11 +5,11 @@ VIRTHOME="/home/$USER/.dv/virt:/home/$USER"
 
 USERNAME="UNAME=$USER"
 USERID="UID=$(id -u $USER)"
-GROUPNAME="GNAME=$(id -gn $USER)"
-USERGID="GID=$(id -g $USER)"
+GROUPNAME="GRPNAME=$(id -gn $USER)"
+USERGID="GRPID=$(id -g $USER)"
 
-GITNAME="GNAME=$(git config user.name)"
-GITEMAIL="GEMAIL=$(git config user.email)"
+GITNAME="GITNAME=$(git config user.name)"
+GITEMAIL="GITEMAIL=$(git config user.email)"
 
 docker container run -d \
        -p 55111:55111 \
